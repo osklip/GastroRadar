@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+env/
+
+# Flutter/Android
+build/
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+*.spec
+*.aab
+*.apk
+
+# IDE
+.vscode/
+.idea/
+*.swp
