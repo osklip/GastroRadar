@@ -40,5 +40,15 @@ class FlashSaleRequest(BaseModel):
         ..., 
         gt=0, 
         le=20000, 
-        description="Promień wyszukiwania musi być większy od 0 i nie większy niż 20000 metrów (20 km)."
+        description="Promień wyszukiwania musi być większy od 0 i nie większy niż 20 km."
     )
+    duration_minutes: int = Field(
+        ..., 
+        gt=0, 
+        le=1440, 
+        description="Czas trwania promocji w minutach (max 24h)."
+    )
+
+class CancelSaleRequest(BaseModel):
+    restaurant_id: int = Field(..., gt=0)
+    sale_id: int = Field(..., gt=0)
