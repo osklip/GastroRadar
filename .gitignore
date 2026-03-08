@@ -1,8 +1,13 @@
+# Zmienne środowiskowe i klucze API (BARDZO WAŻNE!)
+.env
+*.env
+
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 env/
+venv/
 
 # Flutter/Android
 build/
