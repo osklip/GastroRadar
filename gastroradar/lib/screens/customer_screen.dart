@@ -120,16 +120,16 @@ class _CustomerScreenState extends State<CustomerScreen> {
 
   // Nowa funkcja otwierająca Nawigację
   Future<void> _openMap(double lat, double lon) async {
-    final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lon');
-    
-    // Wymuszamy otwarcie w zewnętrznej aplikacji (czyli natywnej mapie na telefonie)
-    if (!await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nie udało się otworzyć mapy.'), backgroundColor: Colors.red),
-      );
-    }
+  // Używamy natywnego schematu URL dla Google Maps, wklejając zmienne $lat i $lon
+  final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lon');
+
+  if (!await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication)) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Nie udało się otworzyć mapy.'), backgroundColor: Colors.red),
+    );
   }
+}
 
   @override
   void dispose() {
