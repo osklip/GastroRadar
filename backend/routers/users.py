@@ -6,15 +6,24 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 @router.post("/location")
 async def update_user_location(data: LocationUpdate, request: Request):
     """
-    Telefon wysyła GPS. Serwer aktualizuje pozycję, sprawdza bazę w poszukiwaniu nowych alertów
-    oraz aktywnych okazji w okolicy.
+    Telefon wysyła GPS. Serwer waliduje istnienie użytkownika, aktualizuje pozycję, 
+    sprawdza bazę w poszukiwaniu nowych alertów oraz aktywnych okazji w okolicy.
     """
     pool = request.app.state.db_pool
     if pool is None:
         raise HTTPException(status_code=500, detail="Brak połączenia z bazą danych")
 
     async with pool.acquire() as connection:
-        # 1. Zapisz/zaktualizuj pozycję użytkownika w bazie
+        # 1. WALIDACJA BIZNESOWA: Sprawdzenie, czy użytkownik istnieje w bazie.
+        # Chroni to przed błędem 500 (naruszenie integralności klucza obcego).
+        user_exists = await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", 
+            data.user_id
+        )
+        if not user_exists:
+            raise HTTPException(status_code=404, detail="Użytkownik o podanym ID nie istnieje.")
+
+        # 2. Zapisz/zaktualizuj pozycję użytkownika w bazie
         query_update_loc = """
             INSERT INTO user_locations (user_id, location, updated_at)
             VALUES ($1, ST_SetSRID(ST_MakePoint($3, $2), 4326), CURRENT_TIMESTAMP)
@@ -25,7 +34,7 @@ async def update_user_location(data: LocationUpdate, request: Request):
         """
         await connection.execute(query_update_loc, data.user_id, data.lat, data.lon)
         
-        # 2. Pobierz trwające promocje z bazy danych
+        # 3. Pobierz trwające promocje z bazy danych
         query_active_deals = """
             SELECT 
                 r.name as restaurant_name,
@@ -50,14 +59,14 @@ async def update_user_location(data: LocationUpdate, request: Request):
             } for r in rows
         ]
         
-        # 3. Sprawdzenie jednorazowych powiadomień PUSH w bazie danych
+        # 4. Sprawdzenie jednorazowych powiadomień PUSH w bazie danych
         alerts_records = await connection.fetch(
             "SELECT message FROM pending_notifications WHERE user_id = $1",
             data.user_id
         )
         user_alerts = [record['message'] for record in alerts_records]
 
-        # 4. Wyczyść odebrane powiadomienia w bazie
+        # 5. Wyczyść odebrane powiadomienia w bazie
         if user_alerts:
             await connection.execute(
                 "DELETE FROM pending_notifications WHERE user_id = $1",
