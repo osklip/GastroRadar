@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:url_launcher/url_launcher.dart'; // <-- Nowy import
 import '../main.dart'; 
 
 class CustomerScreen extends StatefulWidget {
-  // Zmienna przechowująca ID przekazane z ekranu logowania
   final int userId;
   
   const CustomerScreen({super.key, required this.userId});
@@ -19,9 +19,10 @@ class CustomerScreen extends StatefulWidget {
 class _CustomerScreenState extends State<CustomerScreen> {
   String _statusMessage = 'Gotowy do szukania promocji...';
   bool _isTracking = false;
-  Timer? _timer;
-  List<dynamic> _activeDeals = [];
   
+  StreamSubscription<Position>? _positionStreamSubscription;
+  
+  List<dynamic> _activeDeals = [];
   final String backendUrl = 'http://10.0.2.2:8000'; 
 
   Future<void> _startTracking() async {
@@ -43,15 +44,29 @@ class _CustomerScreenState extends State<CustomerScreen> {
 
     setState(() {
       _isTracking = true;
-      _statusMessage = 'Radar włączony. Przeszukuję okolicę...';
+      _statusMessage = 'Radar włączony. Nasłuchuję ruchu...';
     });
 
-    _timer = Timer.periodic(const Duration(seconds: 15), (timer) => _sendLocationToServer());
-    _sendLocationToServer();
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+
+    _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+      (Position position) {
+        _sendLocationToServer(position);
+      },
+      onError: (error) {
+        debugPrint("Błąd strumienia lokalizacji: $error");
+      }
+    );
+    
+    Position initialPos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    _sendLocationToServer(initialPos);
   }
 
   void _stopTracking() {
-    _timer?.cancel();
+    _positionStreamSubscription?.cancel();
     setState(() {
       _isTracking = false;
       _statusMessage = 'Radar wyłączony.';
@@ -72,13 +87,11 @@ class _CustomerScreenState extends State<CustomerScreen> {
     await flutterLocalNotificationsPlugin.show(0, title, body, platformChannelSpecifics);
   }
 
-  Future<void> _sendLocationToServer() async {
+  Future<void> _sendLocationToServer(Position pos) async {
     try {
-      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       final response = await http.post(
         Uri.parse('$backendUrl/api/users/location'),
         headers: {"Content-Type": "application/json"},
-        // Używamy dynamicznego ID z konstruktora widgetu
         body: jsonEncode({"user_id": widget.userId, "lat": pos.latitude, "lon": pos.longitude}),
       );
 
@@ -105,16 +118,28 @@ class _CustomerScreenState extends State<CustomerScreen> {
     }
   }
 
+  // Nowa funkcja otwierająca Nawigację
+  Future<void> _openMap(double lat, double lon) async {
+    final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lon');
+    
+    // Wymuszamy otwarcie w zewnętrznej aplikacji (czyli natywnej mapie na telefonie)
+    if (!await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nie udało się otworzyć mapy.'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   void dispose() {
-    _timer?.cancel();
+    _positionStreamSubscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Wyświetlamy ID na pasku tytułowym dla pewności
       appBar: AppBar(title: Text('Radar Promocji (ID: ${widget.userId})')),
       body: Column(
         children: [
@@ -167,23 +192,46 @@ class _CustomerScreenState extends State<CustomerScreen> {
                       final deal = _activeDeals[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.deepOrange,
-                            child: Icon(Icons.fastfood, color: Colors.white),
-                          ),
-                          title: Text(
-                            "${deal['item']} za ${deal['price']} PLN",
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text("Lokal: ${deal['restaurant']}"),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.directions_walk, size: 20, color: Colors.grey),
-                              Text("${deal['distance']} m", style: const TextStyle(fontSize: 12)),
-                            ],
-                          ),
+                        child: Column(
+                          children: [
+                            ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Colors.deepOrange,
+                                child: Icon(Icons.fastfood, color: Colors.white),
+                              ),
+                              title: Text(
+                                "${deal['item']} za ${deal['price']} PLN",
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text("Lokal: ${deal['restaurant']}"),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.directions_walk, size: 20, color: Colors.grey),
+                                  Text("${deal['distance']} m", style: const TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            // Pasek z przyciskiem Nawigacji pod spodem
+                            Padding(
+                              padding: const EdgeInsets.only(right: 16.0, bottom: 8.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      // Sprawdzamy czy backend na pewno przesłał współrzędne
+                                      if (deal['lat'] != null && deal['lon'] != null) {
+                                        _openMap(deal['lat'], deal['lon']);
+                                      }
+                                    },
+                                    icon: const Icon(Icons.map, color: Colors.blueAccent),
+                                    label: const Text('Prowadź', style: TextStyle(color: Colors.blueAccent)),
+                                  ),
+                                ],
+                              ),
+                            )
+                          ],
                         ),
                       );
                     },
