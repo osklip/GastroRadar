@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class RestaurantScreen extends StatefulWidget {
-  const RestaurantScreen({super.key});
+  // Zmienna przechowująca ID restauracji
+  final int restaurantId;
+  
+  const RestaurantScreen({super.key, required this.restaurantId});
 
   @override
   State<RestaurantScreen> createState() => _RestaurantScreenState();
@@ -15,7 +18,6 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
   double _radius = 1000;
   bool _isLoading = false;
 
-  final int restaurantId = 1;
   final String backendUrl = 'http://10.0.2.2:8000';
 
   Future<void> _sendFlashSale() async {
@@ -25,7 +27,7 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
         Uri.parse('$backendUrl/api/restaurants/flash-sale'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "restaurant_id": restaurantId,
+          "restaurant_id": widget.restaurantId, // Korzystamy z dynamicznego ID
           "food_item": _foodController.text,
           "discount_price": double.tryParse(_priceController.text) ?? 0.0,
           "radius_meters": _radius.toInt(),
@@ -42,12 +44,13 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
           ),
         );
       } else {
-        throw Exception("Błąd serwera");
+        // Jeśli serwer zwróci błąd (np. 404 - Restauracja nie znaleziona)
+        throw Exception("Błąd serwera: ${response.statusCode}");
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wystąpił błąd podczas wysyłania.'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Wystąpił błąd: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -57,7 +60,7 @@ class _RestaurantScreenState extends State<RestaurantScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Panel Menedżera')),
+      appBar: AppBar(title: Text('Zarządzanie (ID: ${widget.restaurantId})')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(

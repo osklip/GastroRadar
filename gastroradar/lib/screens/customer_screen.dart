@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import '../main.dart'; // import dla flutterLocalNotificationsPlugin
+import '../main.dart'; 
 
 class CustomerScreen extends StatefulWidget {
-  const CustomerScreen({super.key});
+  // Zmienna przechowująca ID przekazane z ekranu logowania
+  final int userId;
+  
+  const CustomerScreen({super.key, required this.userId});
 
   @override
   State<CustomerScreen> createState() => _CustomerScreenState();
@@ -17,12 +20,9 @@ class _CustomerScreenState extends State<CustomerScreen> {
   String _statusMessage = 'Gotowy do szukania promocji...';
   bool _isTracking = false;
   Timer? _timer;
-  
-  // Lista do przechowywania okazji pobranych z bazy
   List<dynamic> _activeDeals = [];
   
-  final int userId = 1;
-  final String backendUrl = 'http://10.0.2.2:8000';
+  final String backendUrl = 'http://10.0.2.2:8000'; 
 
   Future<void> _startTracking() async {
     await flutterLocalNotificationsPlugin
@@ -55,7 +55,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
     setState(() {
       _isTracking = false;
       _statusMessage = 'Radar wyłączony.';
-      _activeDeals.clear(); // Czyścimy listę po wyłączeniu radaru
+      _activeDeals.clear(); 
     });
   }
 
@@ -78,20 +78,19 @@ class _CustomerScreenState extends State<CustomerScreen> {
       final response = await http.post(
         Uri.parse('$backendUrl/api/users/location'),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"user_id": userId, "lat": pos.latitude, "lon": pos.longitude}),
+        // Używamy dynamicznego ID z konstruktora widgetu
+        body: jsonEncode({"user_id": widget.userId, "lat": pos.latitude, "lon": pos.longitude}),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // Obsługa powiadomień dźwiękowych (Push)
         if (data['alerts'] != null && (data['alerts'] as List).isNotEmpty) {
           for (String alertMsg in data['alerts']) {
             _showNotification('Złapano okazję!', alertMsg);
           }
         }
 
-        // Obsługa wizualnej listy okazji na ekranie
         setState(() {
           _activeDeals = data['deals'] ?? [];
           if (_activeDeals.isEmpty) {
@@ -115,10 +114,10 @@ class _CustomerScreenState extends State<CustomerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Radar Promocji')),
+      // Wyświetlamy ID na pasku tytułowym dla pewności
+      appBar: AppBar(title: Text('Radar Promocji (ID: ${widget.userId})')),
       body: Column(
         children: [
-          // Karta sterująca radarem
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Card(
@@ -153,16 +152,13 @@ class _CustomerScreenState extends State<CustomerScreen> {
               ),
             ),
           ),
-          
           const Divider(),
-          
-          // Dynamiczna lista znalezionych okazji
           Expanded(
             child: _activeDeals.isEmpty
                 ? const Center(
                     child: Text(
                       "Włącz radar lub poczekaj na nowe oferty...",
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
                     ),
                   )
                 : ListView.builder(
