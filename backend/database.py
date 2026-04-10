@@ -10,27 +10,25 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 async def init_db(pool):
     """Tworzy kompletną strukturę bazy danych przy uruchomieniu."""
     async with pool.acquire() as conn:
-        # Rozszerzenie geograficzne
         await conn.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
         
-        # 1. Użytkownicy (Klienci)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL
             );
         """)
         
-        # 2. Restauracje
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS restaurants (
                 id SERIAL PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
+                name VARCHAR(100) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
                 location GEOMETRY(Point, 4326) NOT NULL
             );
         """)
         
-        # 3. Pozycje użytkowników
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_locations (
                 user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -39,7 +37,6 @@ async def init_db(pool):
             );
         """)
         
-        # 4. Promocje
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS flash_sales (
                 id SERIAL PRIMARY KEY,
@@ -52,7 +49,6 @@ async def init_db(pool):
             );
         """)
 
-        # 5. Oczekujące powiadomienia
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS pending_notifications (
                 id SERIAL PRIMARY KEY,
