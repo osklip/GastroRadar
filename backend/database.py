@@ -16,18 +16,32 @@ async def init_db(pool):
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL
+                password_hash VARCHAR(255) NOT NULL,
+                fcm_token VARCHAR(255)
             );
         """)
+        
+        # Przypadek brzegowy: aktualizacja istniejącej tabeli users
+        try:
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token VARCHAR(255);")
+        except asyncpg.exceptions.DuplicateColumnError:
+            pass
         
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS restaurants (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
+                cuisine_type VARCHAR(50),
                 location GEOMETRY(Point, 4326) NOT NULL
             );
         """)
+
+        # Przypadek brzegowy: aktualizacja istniejącej tabeli restaurants
+        try:
+            await conn.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS cuisine_type VARCHAR(50);")
+        except asyncpg.exceptions.DuplicateColumnError:
+            pass
         
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_locations (
