@@ -10,14 +10,16 @@ class FlashSaleRequest(BaseModel):
     discount_price: float = Field(..., ge=0.0)
     radius_meters: int = Field(..., gt=0, le=20000)
     duration_minutes: int = Field(..., gt=0, le=1440)
+    max_claims: int = Field(..., gt=0, le=1000)
+
+class ClaimRequest(BaseModel):
+    sale_id: int = Field(..., gt=0)
 
 class CancelSaleRequest(BaseModel):
     sale_id: int = Field(..., gt=0)
 
 class FCMTokenUpdate(BaseModel):
     fcm_token: str = Field(..., min_length=10)
-
-# --- NOWE MODELE AUTORYZACJI ---
 
 class LoginRequest(BaseModel):
     username: str

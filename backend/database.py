@@ -8,7 +8,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def init_db(pool):
-    """Tworzy kompletną strukturę bazy danych przy uruchomieniu."""
+    """Tworzy kompletną strukturę bazy danych z obsługą kuponów i limitów."""
     async with pool.acquire() as conn:
         await conn.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
         
@@ -21,7 +21,6 @@ async def init_db(pool):
             );
         """)
         
-        # Przypadek brzegowy: aktualizacja istniejącej tabeli users
         try:
             await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token VARCHAR(255);")
         except asyncpg.exceptions.DuplicateColumnError:
@@ -37,19 +36,10 @@ async def init_db(pool):
             );
         """)
 
-        # Przypadek brzegowy: aktualizacja istniejącej tabeli restaurants
         try:
             await conn.execute("ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS cuisine_type VARCHAR(50);")
         except asyncpg.exceptions.DuplicateColumnError:
             pass
-        
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS user_locations (
-                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-                location GEOMETRY(Point, 4326) NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
         
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS flash_sales (
@@ -59,7 +49,34 @@ async def init_db(pool):
                 discount_price NUMERIC(5, 2) NOT NULL,
                 radius_meters INTEGER NOT NULL,
                 expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                redemption_code VARCHAR(4) NOT NULL DEFAULT '0000',
+                max_claims INTEGER NOT NULL DEFAULT 50
+            );
+        """)
+
+        # Zabezpieczenie dla bazy danych utworzonej we wcześniejszych krokach
+        try:
+            await conn.execute("ALTER TABLE flash_sales ADD COLUMN IF NOT EXISTS redemption_code VARCHAR(4) NOT NULL DEFAULT '0000';")
+            await conn.execute("ALTER TABLE flash_sales ADD COLUMN IF NOT EXISTS max_claims INTEGER NOT NULL DEFAULT 50;")
+        except asyncpg.exceptions.DuplicateColumnError:
+            pass
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS sale_claims (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                sale_id INTEGER REFERENCES flash_sales(id) ON DELETE CASCADE,
+                claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, sale_id)
+            );
+        """)
+        
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_locations (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                location GEOMETRY(Point, 4326) NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
 

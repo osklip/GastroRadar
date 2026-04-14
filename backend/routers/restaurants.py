@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from typing import Optional
 from schemas import FlashSaleRequest, CancelSaleRequest
 from auth_utils import get_current_token_payload
+import random
+import string
 import logging
 
 FCM_ENABLED = False
@@ -22,14 +24,15 @@ except ValueError:
 router = APIRouter(prefix="/api/restaurants", tags=["Restaurants"])
 
 def get_restaurant_id_from_payload(payload: dict) -> int:
-    """Funkcja pomocnicza weryfikująca istnienie ID dla Pylance"""
     sub = payload.get("sub")
     if sub is None:
         raise HTTPException(status_code=401, detail="Token JWT nie zawiera identyfikatora.")
     if payload.get("role") != "restaurant":
         raise HTTPException(status_code=403, detail="Wymagana rola restauracji.")
-    
     return int(str(sub))
+
+def generate_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
 
 @router.post("/flash-sale")
 async def trigger_flash_sale(
@@ -38,6 +41,7 @@ async def trigger_flash_sale(
     payload: dict = Depends(get_current_token_payload)
 ):
     restaurant_id = get_restaurant_id_from_payload(payload)
+    redemption_code = generate_code()
 
     pool = request.app.state.db_pool
     async with pool.acquire() as connection:
@@ -55,9 +59,9 @@ async def trigger_flash_sale(
         nearby_users = await connection.fetch(query_find_users, restaurant['lon'], restaurant['lat'], sale.radius_meters)
 
         await connection.execute(
-            """INSERT INTO flash_sales (restaurant_id, food_item, discount_price, radius_meters, expires_at)
-               VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP + ($5 * INTERVAL '1 minute'))""",
-            restaurant_id, sale.food_item, sale.discount_price, sale.radius_meters, sale.duration_minutes
+            """INSERT INTO flash_sales (restaurant_id, food_item, discount_price, radius_meters, max_claims, redemption_code, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP + ($7 * INTERVAL '1 minute'))""",
+            restaurant_id, sale.food_item, sale.discount_price, sale.radius_meters, sale.max_claims, redemption_code, sale.duration_minutes
         )
 
         notifications_sent = 0
@@ -87,7 +91,7 @@ async def trigger_flash_sale(
             except Exception as e:
                 logging.error(f"Błąd wysyłania powiadomień FCM: {e}")
 
-    return {"status": "success", "users_notified_count": notifications_sent}
+    return {"status": "success", "users_notified_count": notifications_sent, "code": redemption_code}
 
 
 @router.get("/active-sales")
@@ -99,11 +103,11 @@ async def get_active_sales(
     pool = request.app.state.db_pool
     async with pool.acquire() as connection:
         
-        # Ekstrakcja danych przestrzennych (ST_X, ST_Y) wymaganych do nawigacji po stronie aplikacji
         base_query = """
-            SELECT f.id, f.food_item, f.discount_price, f.radius_meters, f.expires_at, 
+            SELECT f.id, f.food_item, f.discount_price, f.radius_meters, f.expires_at, f.redemption_code, f.max_claims,
                    r.name as restaurant_name, r.cuisine_type,
-                   ST_X(r.location) as lon, ST_Y(r.location) as lat
+                   ST_X(r.location) as lon, ST_Y(r.location) as lat,
+                   (SELECT COUNT(*) FROM sale_claims WHERE sale_id = f.id) as current_claims
             FROM flash_sales f
             JOIN restaurants r ON f.restaurant_id = r.id
             WHERE f.expires_at > CURRENT_TIMESTAMP
@@ -123,7 +127,10 @@ async def get_active_sales(
             "radius_meters": r["radius_meters"], 
             "expires_at": r["expires_at"].isoformat(),
             "lon": r["lon"],
-            "lat": r["lat"]
+            "lat": r["lat"],
+            "redemption_code": r["redemption_code"],
+            "max_claims": r["max_claims"],
+            "current_claims": r["current_claims"]
         } for r in rows]
         
     return {"status": "success", "sales": sales}
