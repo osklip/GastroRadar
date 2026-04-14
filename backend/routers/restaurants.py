@@ -11,7 +11,6 @@ try:
     import firebase_admin
     from firebase_admin import messaging as fb_messaging
     if not firebase_admin._apps:
-        # Wymaga ustawienia zmiennej środowiskowej GOOGLE_APPLICATION_CREDENTIALS w .env
         firebase_admin.initialize_app()
     messaging = fb_messaging
     FCM_ENABLED = True
@@ -69,14 +68,12 @@ async def trigger_flash_sale(
             fcm_token = user['fcm_token']
             msg = f"Szybka akcja w {restaurant['name']}! {sale.food_item} za jedyne {sale.discount_price} PLN!"
             
-            # Zapis do wewnętrznego inboksa
             await connection.execute("INSERT INTO pending_notifications (user_id, message) VALUES ($1, $2)", uid, msg)
             notifications_sent += 1
 
             if fcm_token:
                 fcm_tokens_to_notify.append(fcm_token)
 
-        # Wysłanie powiadomień Push via FCM (sprawdzenie uwzględnia teraz zabezpieczenie Pylance)
         if FCM_ENABLED and messaging is not None and fcm_tokens_to_notify:
             try:
                 message = messaging.MulticastMessage(
@@ -102,9 +99,11 @@ async def get_active_sales(
     pool = request.app.state.db_pool
     async with pool.acquire() as connection:
         
+        # Ekstrakcja danych przestrzennych (ST_X, ST_Y) wymaganych do nawigacji po stronie aplikacji
         base_query = """
             SELECT f.id, f.food_item, f.discount_price, f.radius_meters, f.expires_at, 
-                   r.name as restaurant_name, r.cuisine_type
+                   r.name as restaurant_name, r.cuisine_type,
+                   ST_X(r.location) as lon, ST_Y(r.location) as lat
             FROM flash_sales f
             JOIN restaurants r ON f.restaurant_id = r.id
             WHERE f.expires_at > CURRENT_TIMESTAMP
@@ -122,7 +121,9 @@ async def get_active_sales(
             "food_item": r["food_item"], 
             "discount_price": float(r["discount_price"]),
             "radius_meters": r["radius_meters"], 
-            "expires_at": r["expires_at"].isoformat()
+            "expires_at": r["expires_at"].isoformat(),
+            "lon": r["lon"],
+            "lat": r["lat"]
         } for r in rows]
         
     return {"status": "success", "sales": sales}

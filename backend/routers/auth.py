@@ -40,11 +40,11 @@ async def register_restaurant(data: RegisterRestaurantRequest, request: Request)
             raise HTTPException(400, "Restauracja o takiej nazwie już istnieje.")
         
         hashed_pw = get_password_hash(data.password)
-        # Przy rejestracji lokalu od razu przypisujemy jego fizyczną lokalizację GPS
+        # Rejestracja uwzględnia pole cuisine_type oraz przypisanie fizycznej lokalizacji GPS
         rest_id = await conn.fetchval(
-            """INSERT INTO restaurants (name, password_hash, location) 
-               VALUES ($1, $2, ST_SetSRID(ST_MakePoint($4, $3), 4326)) RETURNING id""",
-            data.name, hashed_pw, data.lat, data.lon
+            """INSERT INTO restaurants (name, password_hash, cuisine_type, location) 
+               VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($5, $4), 4326)) RETURNING id""",
+            data.name, hashed_pw, data.cuisine_type, data.lat, data.lon
         )
     return {"status": "success", "message": "Konto restauracji utworzone pomyślnie.", "restaurant_id": rest_id}
 

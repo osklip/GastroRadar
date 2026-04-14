@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:geolocator/geolocator.dart'; // Dodane do odczytu GPS restauracji przy rejestracji
+import 'package:geolocator/geolocator.dart';
 import 'customer_screen.dart';
 import 'restaurant_screen.dart';
 
@@ -13,19 +13,30 @@ class RoleSelectionScreen extends StatefulWidget {
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-  bool _isLoginMode = true; // Przełącznik Logowanie / Rejestracja
-  String _selectedRole = 'user'; // 'user' lub 'restaurant'
+  bool _isLoginMode = true; 
+  String _selectedRole = 'user'; 
 
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  
+  String _selectedCuisine = 'Polska';
+  final List<String> _cuisines = ['Polska', 'Włoska', 'Azjatycka', 'Fast-food', 'Wege', 'Kebab'];
 
   bool _isLoading = false;
   final String backendUrl = 'http://10.0.2.2:8000';
 
   Future<void> _submitForm() async {
-    // Prosta weryfikacja pustych pól
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wypełnij wszystkie pola!'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wypełnij wszystkie pola!'), backgroundColor: Colors.red)
+      );
+      return;
+    }
+
+    if (!_isLoginMode && _passwordController.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hasło musi zawierać minimum 6 znaków.'), backgroundColor: Colors.orange)
+      );
       return;
     }
 
@@ -44,14 +55,32 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         if (_selectedRole == 'user') {
           payload = {"username": _usernameController.text, "password": _passwordController.text};
         } else {
-          // Rejestracja restauracji: Automatyczne pobranie GPS do zakotwiczenia lokalu!
           bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-          if (!serviceEnabled) throw Exception("Musisz włączyć GPS, by zarejestrować lokal!");
+          if (!serviceEnabled) {
+            throw Exception("Musisz włączyć usługi lokalizacyjne (GPS), by zarejestrować lokal.");
+          }
+          
           LocationPermission permission = await Geolocator.checkPermission();
-          if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+            if (permission == LocationPermission.denied) {
+              throw Exception("Zgoda na dostęp do lokalizacji została odrzucona.");
+            }
+          }
+          
+          if (permission == LocationPermission.deniedForever) {
+            throw Exception("Zgoda na lokalizację jest trwale zablokowana. Zmień ustawienia systemu Android.");
+          }
           
           Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-          payload = {"name": _usernameController.text, "password": _passwordController.text, "lat": pos.latitude, "lon": pos.longitude};
+          
+          payload = {
+            "name": _usernameController.text, 
+            "password": _passwordController.text, 
+            "cuisine_type": _selectedCuisine,
+            "lat": pos.latitude, 
+            "lon": pos.longitude
+          };
         }
       }
 
@@ -65,7 +94,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
       if (response.statusCode == 200) {
         if (_isLoginMode) {
-          // Sukces Logowania
           final data = jsonDecode(response.body);
           final token = data['access_token'];
           final id = data['id'];
@@ -76,20 +104,24 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => RestaurantScreen(restaurantId: id, token: token)));
           }
         } else {
-          // Sukces Rejestracji
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Konto utworzone! Możesz się teraz zalogować.'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Konto utworzone! Możesz się teraz zalogować.'), backgroundColor: Colors.green)
+          );
           setState(() {
-            _isLoginMode = true; // Przełączenie z powrotem na ekran logowania
+            _isLoginMode = true; 
             _passwordController.clear();
           });
         }
       } else {
-        // Błędy rzucone przez FastAPI (np. "Użytkownik już istnieje", "Złe hasło")
         final errorMsg = jsonDecode(response.body)['detail'] ?? 'Błąd operacji';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMsg), backgroundColor: Colors.red)
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd systemu: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Błąd: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red)
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -110,7 +142,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 Text('GastroRadar', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.deepOrange)),
                 const SizedBox(height: 32),
                 
-                // Przełącznik roli (SegmentedButton)
                 SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(value: 'user', icon: Icon(Icons.person), label: Text('Klient')),
@@ -146,13 +177,37 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _passwordController,
-                          obscureText: true, // Gwiazdkowanie hasła!
+                          obscureText: true,
                           decoration: const InputDecoration(
                             labelText: 'Hasło (min. 6 znaków)',
                             border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.lock),
                           ),
                         ),
+                        if (!_isLoginMode && _selectedRole == 'restaurant') ...[
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedCuisine,
+                            decoration: const InputDecoration(
+                              labelText: 'Typ serwowanej kuchni',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.restaurant_menu),
+                            ),
+                            items: _cuisines.map((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedCuisine = newValue;
+                                });
+                              }
+                            },
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity, height: 50,
@@ -170,7 +225,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 ),
                 const SizedBox(height: 16),
                 
-                // Przycisk przełączający tryb
                 TextButton(
                   onPressed: () {
                     setState(() {

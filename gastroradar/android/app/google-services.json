@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "390917413288",
+    "project_id": "gastroradar-c270e",
+    "storage_bucket": "gastroradar-c270e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:390917413288:android:3ed462aba8834517d3659d",
+        "android_client_info": {
+          "package_name": "com.example.gastroradar"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBTDzxv6iPEK4CyKRGuzCRG7jOIb91Cfhw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
