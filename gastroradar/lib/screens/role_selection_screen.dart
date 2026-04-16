@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:geolocator/geolocator.dart';
 import 'customer_screen.dart';
 import 'restaurant_screen.dart';
 
@@ -18,9 +17,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  
-  String _selectedCuisine = 'Polska';
-  final List<String> _cuisines = ['Polska', 'Włoska', 'Azjatycka', 'Fast-food', 'Wege', 'Kebab'];
 
   bool _isLoading = false;
   final String backendUrl = 'http://10.0.2.2:8000';
@@ -43,45 +39,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final endpoint = _isLoginMode 
-          ? '/api/auth/login' 
-          : (_selectedRole == 'user' ? '/api/auth/register/user' : '/api/auth/register/restaurant');
+      // Rejestracja z poziomu aplikacji jest teraz możliwa wyłącznie dla klienta ('user')
+      final endpoint = _isLoginMode ? '/api/auth/login' : '/api/auth/register/user';
 
       Map<String, dynamic> payload = {};
 
       if (_isLoginMode) {
         payload = {"username": _usernameController.text, "password": _passwordController.text, "role": _selectedRole};
       } else {
-        if (_selectedRole == 'user') {
-          payload = {"username": _usernameController.text, "password": _passwordController.text};
-        } else {
-          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-          if (!serviceEnabled) {
-            throw Exception("Musisz włączyć usługi lokalizacyjne (GPS), by zarejestrować lokal.");
-          }
-          
-          LocationPermission permission = await Geolocator.checkPermission();
-          if (permission == LocationPermission.denied) {
-            permission = await Geolocator.requestPermission();
-            if (permission == LocationPermission.denied) {
-              throw Exception("Zgoda na dostęp do lokalizacji została odrzucona.");
-            }
-          }
-          
-          if (permission == LocationPermission.deniedForever) {
-            throw Exception("Zgoda na lokalizację jest trwale zablokowana. Zmień ustawienia systemu Android.");
-          }
-          
-          Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-          
-          payload = {
-            "name": _usernameController.text, 
-            "password": _passwordController.text, 
-            "cuisine_type": _selectedCuisine,
-            "lat": pos.latitude, 
-            "lon": pos.longitude
-          };
-        }
+        payload = {"username": _usernameController.text, "password": _passwordController.text};
       }
 
       final response = await http.post(
@@ -119,6 +85,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Błąd: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red)
       );
@@ -159,68 +126,73 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   elevation: 2,
                   child: Padding(
                     padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      children: [
-                        Text(
-                          _isLoginMode ? 'Zaloguj się' : 'Utwórz nowe konto',
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 24),
-                        TextField(
-                          controller: _usernameController,
-                          decoration: InputDecoration(
-                            labelText: _selectedRole == 'user' ? 'Nazwa użytkownika' : 'Nazwa lokalu',
-                            border: const OutlineInputBorder(),
-                            prefixIcon: const Icon(Icons.badge),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Hasło (min. 6 znaków)',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.lock),
-                          ),
-                        ),
-                        if (!_isLoginMode && _selectedRole == 'restaurant') ...[
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<String>(
-                            initialValue: _selectedCuisine,
-                            decoration: const InputDecoration(
-                              labelText: 'Typ serwowanej kuchni',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.restaurant_menu),
+                    // Zmiana logiki UI: Pokazujemy formularz lub wizytówkę kontaktową
+                    child: (!_isLoginMode && _selectedRole == 'restaurant') 
+                      ? Column(
+                          children: [
+                            const Icon(Icons.handshake, size: 60, color: Colors.deepOrange),
+                            const SizedBox(height: 16),
+                            const Text('Zostań Partnerem!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Dbamy o jakość ofert w naszej aplikacji. Aby dołączyć do platformy i publikować Flash Sales, skontaktuj się z naszym zespołem w celu nawiązania współpracy.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 15),
                             ),
-                            items: _cuisines.map((String value) {
-                              return DropdownMenuItem<String>(
-                                value: value,
-                                child: Text(value),
-                              );
-                            }).toList(),
-                            onChanged: (String? newValue) {
-                              if (newValue != null) {
-                                setState(() {
-                                  _selectedCuisine = newValue;
-                                });
-                              }
-                            },
-                          ),
-                        ],
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity, height: 50,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
-                            onPressed: _isLoading ? null : _submitForm,
-                            child: _isLoading 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : Text(_isLoginMode ? 'ZALOGUJ' : 'ZAREJESTRUJ', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
+                            const SizedBox(height: 24),
+                            Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.deepOrange.shade200),
+                              ),
+                              child: const SelectableText(
+                                'wspolpraca@gastroradar.pl',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            Text(
+                              _isLoginMode ? 'Zaloguj się' : 'Utwórz nowe konto',
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 24),
+                            TextField(
+                              controller: _usernameController,
+                              decoration: InputDecoration(
+                                labelText: _selectedRole == 'user' ? 'Nazwa użytkownika' : 'Nazwa lokalu',
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.badge),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Hasło (min. 6 znaków)',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.lock),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              width: double.infinity, height: 50,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white),
+                                onPressed: _isLoading ? null : _submitForm,
+                                child: _isLoading 
+                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                    : Text(_isLoginMode ? 'ZALOGUJ' : 'ZAREJESTRUJ', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
                   ),
                 ),
                 const SizedBox(height: 16),

@@ -4,10 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'screens/role_selection_screen.dart';
 
-// Inicjalizacja globalnego obiektu powiadomień
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-// Handler dla powiadomień odbieranych w tle i po zabiciu aplikacji
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -16,55 +14,61 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Bezpieczna inicjalizacja Firebase z obsługą braku pliku google-services.json
+  bool isFirebaseInitialized = false;
+
+  // 1. Bezpieczna inicjalizacja Firebase (Jeżeli brak pliku, aplikacja wystartuje bez FCM)
   try {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    isFirebaseInitialized = true;
   } catch (e) {
-    debugPrint("Błąd inicjalizacji Firebase. Zweryfikuj istnienie pliku google-services.json: \$e");
+    debugPrint("Brak pliku konfiguracji Firebase. Powiadomienia Push nie będą działać. Szczegóły: $e");
   }
 
-  // Wymuszenie zapytania o uprawnienia (niezbędne dla systemu Android 13+)
-  FirebaseMessaging messaging = FirebaseMessaging.instance;
-  await messaging.requestPermission(
-    alert: true,
-    announcement: false,
-    badge: true,
-    carPlay: false,
-    criticalAlert: false,
-    provisional: false,
-    sound: true,
-  );
-
-  // Konfiguracja ikonki dla powiadomień
-  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
-  
-  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-
-  // Nasłuchiwanie na wiadomości na pierwszym planie (Gdy aplikacja jest włączona)
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    RemoteNotification? notification = message.notification;
-    AndroidNotification? android = message.notification?.android;
-
-    if (notification != null && android != null) {
-      flutterLocalNotificationsPlugin.show(
-        notification.hashCode,
-        notification.title,
-        notification.body,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'flash_sales_channel', 
-            'Flash Sales Ofert',
-            channelDescription: 'Powiadomienia o szybkich akcjach z restauracji w pobliżu',
-            importance: Importance.max,
-            priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
-          ),
-        ),
+  // 2. Próba ustawienia FCM i kanałów tylko, jeśli Firebase wystartował
+  if (isFirebaseInitialized) {
+    try {
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
       );
+
+      const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        RemoteNotification? notification = message.notification;
+        AndroidNotification? android = message.notification?.android;
+
+        if (notification != null && android != null) {
+          flutterLocalNotificationsPlugin.show(
+            notification.hashCode,
+            notification.title,
+            notification.body,
+            const NotificationDetails(
+              android: AndroidNotificationDetails(
+                'flash_sales_channel', 
+                'Flash Sales Ofert',
+                channelDescription: 'Powiadomienia o szybkich akcjach z restauracji w pobliżu',
+                importance: Importance.max,
+                priority: Priority.high,
+                icon: '@mipmap/ic_launcher',
+              ),
+            ),
+          );
+        }
+      });
+    } catch (e) {
+       debugPrint("Błąd konfiguracji FCM: $e");
     }
-  });
+  }
 
   runApp(const GastroRadarApp());
 }
